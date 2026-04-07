@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HighG's Budget Architect v4.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        :root {
+            --glass: rgba(15, 23, 42, 0.85);
+            --border: rgba(59, 130, 246, 0.3);
+        }
+
+        body { 
+            background: #020617; 
+            color: #f8fafc; 
+            font-family: 'Inter', sans-serif;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(16, 185, 129, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.08) 0%, transparent 50%);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .glass { 
+            background: var(--glass); 
+            backdrop-filter: blur(20px); 
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border); 
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.2); }
+            50% { box-shadow: 0 0 25px rgba(16, 185, 129, 0.4); }
+        }
+        .glow-active { animation: pulse-glow 2s infinite; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="p-4 md:p-6 lg:p-8">
+    <div id="app" class="max-w-7xl mx-auto">
+        <!-- Encabezado -->
+        <header class="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-6">
+            <div>
+                <h1 class="text-3xl font-black tracking-tighter text-blue-400 mono flex items-center gap-3">
+                    <i data-lucide="cpu" class="w-8 h-8 text-blue-500"></i>
+                    NÚCLEO_OPERATIVO // V4
+                </h1>
+                <p class="text-slate-400 text-xs tracking-widest uppercase mt-1">Personal Finance Sandbox</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button onclick="ui.showAddMoneyModal()" class="flex items-center gap-2 text-xs bg-emerald-600/20 border border-emerald-500/50 text-emerald-400 px-4 py-2.5 rounded-lg hover:bg-emerald-600/40 transition font-bold tracking-widest">
+                    <i data-lucide="plus" class="w-4 h-4"></i> FONDOS
+                </button>
+                <button onclick="ui.showHistoryModal()" class="flex items-center gap-2 text-xs bg-blue-600/20 border border-blue-500/50 text-blue-400 px-4 py-2.5 rounded-lg hover:bg-blue-600/40 transition font-bold tracking-widest">
+                    <i data-lucide="list" class="w-4 h-4"></i> HISTORIAL
+                </button>
+                <button onclick="ui.showSettingsModal()" class="flex items-center gap-2 text-xs bg-slate-800 border border-slate-600 text-slate-300 px-4 py-2.5 rounded-lg hover:bg-slate-700 transition font-bold tracking-widest">
+                    <i data-lucide="settings" class="w-4 h-4"></i> SISTEMA
+                </button>
+            </div>
+        </header>
+
+        <!-- HUD Principal -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="glass p-6 rounded-2xl border-emerald-500/30 relative overflow-hidden group">
+                <div class="text-emerald-500 text-[10px] font-bold tracking-widest uppercase mb-1">Créditos Disponibles</div>
+                <div id="stat-balance" class="text-4xl font-black mono text-white glow-active rounded-xl w-max pr-4">$0.00</div>
+                <div class="mt-2 text-xs text-slate-400">Liquidez actual para operaciones.</div>
+            </div>
+            <div class="glass p-6 rounded-2xl">
+                <div class="text-slate-500 text-[10px] tracking-widest uppercase mb-1">Ingresos Totales</div>
+                <div id="stat-income" class="text-2xl font-bold mono text-blue-400">$0.00</div>
+            </div>
+            <div class="glass p-6 rounded-2xl">
+                <div class="text-slate-500 text-[10px] tracking-widest uppercase mb-1">Gastos Totales</div>
+                <div id="stat-expense" class="text-2xl font-bold mono text-red-400">$0.00</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
+            <!-- Operaciones Rápidas -->
+            <div class="flex flex-col gap-6">
+                <!-- Gasto Manual -->
+                <div class="glass p-6 rounded-2xl">
+                    <h2 class="text-sm font-bold text-slate-300 tracking-widest uppercase mb-4 flex items-center gap-2">
+                        <i data-lucide="terminal-square" class="w-4 h-4 text-blue-400"></i> Ejecutar Gasto
+                    </h2>
+                    <div class="space-y-3">
+                        <input id="manual-desc" type="text" placeholder="Concepto del gasto" class="w-full bg-slate-900/80 p-3 rounded-xl border border-slate-700 outline-none focus:border-blue-500 text-sm">
+                        <input id="manual-amt" type="number" placeholder="Cantidad ($)" class="w-full bg-slate-900/80 p-3 rounded-xl border border-slate-700 outline-none focus:border-blue-500 text-sm">
+                        <button onclick="logic.logExpense()" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 py-3 rounded-xl font-bold text-xs tracking-widest uppercase transition-all flex items-center justify-center gap-2">
+                            <i data-lucide="send" class="w-4 h-4"></i> Registrar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Plantillas Reusables -->
+                <div class="glass p-6 rounded-2xl flex-grow flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-sm font-bold text-slate-300 tracking-widest uppercase flex items-center gap-2">
+                            <i data-lucide="layers" class="w-4 h-4 text-purple-400"></i> Assets Reusables
+                        </h2>
+                        <button onclick="ui.showTemplateModal()" class="text-purple-400 hover:text-purple-300 p-1">
+                            <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <div id="templates-grid" class="grid grid-cols-2 gap-3 overflow-y-auto max-h-[250px] pr-2">
+                        <!-- JS Render -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráfico y Últimos Logs -->
+            <div class="lg:col-span-2 flex flex-col gap-6">
+                <div class="glass p-6 rounded-2xl flex flex-col h-[300px]">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-sm font-bold text-slate-300 tracking-widest uppercase flex items-center gap-2">
+                            <i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i> Flujo de Capital
+                        </h2>
+                    </div>
+                    <div class="flex-grow relative w-full h-full">
+                        <canvas id="balanceChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="glass p-6 rounded-2xl flex-grow flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-sm font-bold text-slate-300 tracking-widest uppercase flex items-center gap-2">
+                            <i data-lucide="history" class="w-4 h-4 text-blue-400"></i> Últimas Operaciones
+                        </h2>
+                        <button onclick="ui.showHistoryModal()" class="text-[10px] text-blue-400 hover:underline tracking-widest uppercase">Ver Todo</button>
+                    </div>
+                    <div class="overflow-x-auto max-h-[200px]">
+                        <table class="w-full text-left text-sm">
+                            <tbody id="tx-log-short" class="divide-y divide-slate-800/50">
+                                <!-- JS Render -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tienda e Inventario -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 border-t border-slate-800 pt-10">
+            <!-- Tienda -->
+            <section>
+                <div class="flex justify-between items-end mb-6">
+                    <h2 class="text-xl font-black italic flex items-center gap-2">
+                        <i data-lucide="shopping-cart" class="text-yellow-500"></i> MERCADO
+                    </h2>
+                    <button onclick="ui.showWishlistModal()" class="text-xs text-blue-400 hover:underline">Crear Meta</button>
+                </div>
+                <div id="shop-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- JS Render -->
+                </div>
+            </section>
+
+            <!-- Portafolio -->
+            <section>
+                <h2 class="text-xl font-black italic mb-6 flex items-center gap-2">
+                    <i data-lucide="briefcase" class="text-emerald-500"></i> TUS ACTIVOS
+                    <span id="inventory-value" class="text-[10px] text-emerald-500/70 tracking-widest not-italic border border-emerald-900/30 bg-emerald-900/10 px-2 py-0.5 rounded uppercase ml-2">Valor: $0</span>
+                </h2>
+                <div id="inventory-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- JS Render -->
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- MODALES -->
+    
+    <!-- Modal: Data Center (Historial Completo) -->
+    <div id="modal-history" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 hidden flex flex-col items-center p-4 md:p-10">
+        <div class="glass p-6 rounded-2xl w-full max-w-4xl h-full flex flex-col border-blue-500/30">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-blue-400 flex items-center gap-2"><i data-lucide="database"></i> DATA CENTER // Registro Completo</h3>
+                <button onclick="ui.closeModals()" class="text-slate-400 hover:text-white p-2"><i data-lucide="x"></i></button>
+            </div>
+            <div class="flex-grow overflow-auto border border-slate-800 rounded-xl bg-slate-900/50">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-slate-900 sticky top-0 border-b border-slate-700 text-slate-400 text-[10px] uppercase tracking-widest">
+                        <tr>
+                            <th class="p-4 font-normal">Tipo</th>
+                            <th class="p-4 font-normal">Fecha</th>
+                            <th class="p-4 font-normal">Concepto</th>
+                            <th class="p-4 font-normal text-right">Cantidad</th>
+                            <th class="p-4 font-normal text-center">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tx-log-full" class="divide-y divide-slate-800/50">
+                        <!-- JS Render -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Configuración y Sync -->
+    <div id="modal-settings" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass p-8 rounded-2xl w-full max-w-md border-slate-500/50">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-lg font-bold text-slate-200 flex items-center gap-2"><i data-lucide="settings"></i> Sistema & Sincronización</h3>
+                <button onclick="ui.closeModals()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            
+            <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+                Usa esta sección para sincronizar tus datos entre tu computadora y tu celular. Copia el "Código de Partida" de un dispositivo y pégalo en el otro.
+            </p>
+
+            <div class="space-y-4">
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                    <h4 class="text-xs font-bold text-blue-400 uppercase tracking-widest mb-2"><i data-lucide="upload" class="inline w-3 h-3 mr-1"></i> Exportar (Guardar)</h4>
+                    <button onclick="logic.exportSave()" class="w-full bg-blue-600/20 text-blue-400 border border-blue-500/50 py-2 rounded-lg text-xs font-bold hover:bg-blue-600 hover:text-white transition">COPIAR CÓDIGO DE PARTIDA AL PORTAPAPELES</button>
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                    <h4 class="text-xs font-bold text-emerald-400 uppercase tracking-widest mb-2"><i data-lucide="download" class="inline w-3 h-3 mr-1"></i> Importar (Cargar)</h4>
+                    <textarea id="import-code" rows="3" placeholder="Pega tu código de partida aquí..." class="w-full bg-slate-950 p-2 rounded text-xs border border-slate-800 outline-none text-slate-300 font-mono mb-2"></textarea>
+                    <button onclick="logic.importSave()" class="w-full bg-emerald-600/20 text-emerald-400 border border-emerald-500/50 py-2 rounded-lg text-xs font-bold hover:bg-emerald-600 hover:text-white transition">SOBRESCRIBIR SISTEMA CON ESTE CÓDIGO</button>
+                </div>
+
+                <div class="pt-4 border-t border-slate-800">
+                    <button onclick="logic.hardReset()" class="w-full text-red-500 py-2 text-xs font-bold hover:underline tracking-widest">FORMATEAR SISTEMA (BORRAR TODO)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Otros Modales (Fondos, Plantilla, Deseo) -->
+    <!-- Modal Fondos -->
+    <div id="modal-income" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass p-8 rounded-2xl w-full max-w-sm border-emerald-500/50">
+            <h3 class="text-lg font-bold text-emerald-400 mb-4 flex items-center gap-2"><i data-lucide="download-cloud"></i> Recibir Fondos</h3>
+            <input id="income-desc" type="text" placeholder="Origen (ej. Salario)" class="w-full bg-slate-900 p-3 rounded-xl border border-slate-700 mb-3 outline-none text-white">
+            <input id="income-amt" type="number" placeholder="Cantidad ($)" class="w-full bg-slate-900 p-3 rounded-xl border border-slate-700 mb-6 outline-none text-white">
+            <div class="flex gap-3">
+                <button onclick="ui.closeModals()" class="flex-1 bg-slate-800 py-3 rounded-xl text-sm font-bold">Cancelar</button>
+                <button onclick="logic.logIncome()" class="flex-1 bg-emerald-600 py-3 rounded-xl text-sm font-bold">Ingresar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Plantilla -->
+    <div id="modal-template" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass p-8 rounded-2xl w-full max-w-sm border-purple-500/50">
+            <h3 class="text-lg font-bold text-purple-400 mb-4 flex items-center gap-2"><i data-lucide="layers"></i> Nueva Plantilla</h3>
+            <input id="tpl-name" type="text" placeholder="Nombre (ej. Internet)" class="w-full bg-slate-900 p-3 rounded-xl border border-slate-700 mb-3 outline-none">
+            <input id="tpl-amt" type="number" placeholder="Cantidad Estimada ($)" class="w-full bg-slate-900 p-3 rounded-xl border border-slate-700 mb-3 outline-none">
+            <select id="tpl-icon" class="w-full bg-slate-900 p-3 rounded-xl border border-slate-700 mb-6 outline-none text-slate-300">
+                <option value="wifi">Internet / Servicios</option>
+                <option value="home">Casa / Alquiler</option>
+                <option value="shopping-bag">Supermercado</option>
+                <option value="car">Transporte / Gasolina</option>
+                <option value="gamepad-2">Suscripción / Entretenimiento</option>
+            </select>
+            <div class="flex gap-3">
+                <button onclick="ui.closeModals()" class="flex-1 bg-slate-800 py-3 rounded-xl text-sm font-bold">Cancelar</button>
+                <button onclick="logic.addTemplate()" class="flex-1 bg-purple-600 py-3 rounded-xl text-sm font-bold">Crear Asset</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Deseo -->
+    <div id="modal-wishlist" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass p-8 rounded-2xl w-full max-w-sm border-yellow-500/50">
+            <h3 class="text-lg font-bold text-yellow-400 mb-4 flex items-center gap-2"><i data-lucide="target"></i> Nuevo Objetivo</h3>
+            <input id="wish-name" type="text" placeholder="Nombre (ej. SP500 o GPU)" class="w-full bg-slate-900 p-3 rounded-xl border border-slate-700 mb-3 outline-none">
+            <input id="wish-amt" type="number" placeholder="Costo ($)" class="w-full bg-slate-900 p-3 rounded-xl border border-slate-700 mb-3 outline-none">
+            <select id="wish-type" class="w-full bg-slate-900 p-3 rounded-xl border border-slate-700 mb-6 outline-none text-slate-300">
+                <option value="loot">Objeto Físico / Lujo</option>
+                <option value="investment">Inversión Financiera</option>
+            </select>
+            <div class="flex gap-3">
+                <button onclick="ui.closeModals()" class="flex-1 bg-slate-800 py-3 rounded-xl text-sm font-bold">Cancelar</button>
+                <button onclick="logic.addWishlistItem()" class="flex-1 bg-yellow-600 text-black py-3 rounded-xl text-sm font-bold">Añadir a Tienda</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 glass px-6 py-3 rounded-full text-sm font-bold z-[100] opacity-0 pointer-events-none transition-all duration-300 transform translate-y-4 shadow-xl">
+        Mensaje
+    </div>
+
+    <script>
+        // ESTADO GLOBAL
+        const defaultState = {
+            balance: 0,
+            totalIncome: 0,
+            totalExpense: 0,
+            transactions: [],
+            templates: [
+                { id: 1, name: 'Alquiler', amount: 800, icon: 'home' },
+                { id: 2, name: 'Internet', amount: 60, icon: 'wifi' }
+            ],
+            wishlist: [
+                { id: 1, name: 'S&P 500 ETF', price: 500, type: 'investment' },
+                { id: 2, name: 'Monitor 4K', price: 350, type: 'loot' }
+            ],
+            inventory: []
+        };
+
+        window.appState = JSON.parse(localStorage.getItem('budget_v4_data')) || defaultState;
+
+        const saveToLocal = () => {
+            localStorage.setItem('budget_v4_data', JSON.stringify(window.appState));
+            ui.renderAll();
+        };
+
+        // UI CONTROLLERS
+        window.ui = {
+            chartInstance: null,
+
+            showToast: (msg, type = 'success') => {
+                const toast = document.getElementById('toast');
+                toast.innerText = msg;
+                toast.className = `fixed bottom-8 left-1/2 -translate-x-1/2 glass px-6 py-3 rounded-full text-sm font-bold z-[100] transition-all duration-300 transform shadow-xl ${
+                    type === 'error' ? 'text-red-400 border-red-500/50' : 
+                    type === 'buy' ? 'text-yellow-400 border-yellow-500/50 scale-110' : 
+                    'text-emerald-400 border-emerald-500/50'
+                }`;
+                toast.classList.remove('opacity-0', 'translate-y-4');
+                setTimeout(() => toast.classList.add('opacity-0', 'translate-y-4'), 3000);
+            },
+
+            closeModals: () => document.querySelectorAll('[id^="modal-"]').forEach(el => el.classList.add('hidden')),
+            showAddMoneyModal: () => document.getElementById('modal-income').classList.remove('hidden'),
+            showTemplateModal: () => document.getElementById('modal-template').classList.remove('hidden'),
+            showWishlistModal: () => document.getElementById('modal-wishlist').classList.remove('hidden'),
+            showHistoryModal: () => document.getElementById('modal-history').classList.remove('hidden'),
+            showSettingsModal: () => document.getElementById('modal-settings').classList.remove('hidden'),
+
+            renderAll: () => {
+                ui.renderHUD();
+                ui.renderTemplates();
+                ui.renderTransactions();
+                ui.renderShop();
+                ui.renderInventory();
+                ui.renderChart();
+                lucide.createIcons();
+            },
+
+            renderHUD: () => {
+                document.getElementById('stat-balance').innerText = `$${window.appState.balance.toLocaleString()}`;
+                document.getElementById('stat-income').innerText = `$${window.appState.totalIncome.toLocaleString()}`;
+                document.getElementById('stat-expense').innerText = `$${window.appState.totalExpense.toLocaleString()}`;
+                
+                const balEl = document.getElementById('stat-balance');
+                if(window.appState.balance < 100) balEl.classList.replace('text-white', 'text-red-400');
+                else balEl.classList.replace('text-red-400', 'text-white');
+            },
+
+            renderTemplates: () => {
+                const grid = document.getElementById('templates-grid');
+                grid.innerHTML = window.appState.templates.map(t => `
+                    <button onclick="logic.useTemplate(${t.id})" class="bg-slate-900/50 hover:bg-slate-800 border border-slate-700 hover:border-purple-500/50 p-3 rounded-xl flex flex-col items-start gap-2 transition-all text-left group">
+                        <div class="flex justify-between w-full">
+                            <i data-lucide="${t.icon}" class="w-4 h-4 text-purple-400"></i>
+                            <span class="text-xs text-slate-500 group-hover:text-red-400" onclick="event.stopPropagation(); logic.deleteTemplate(${t.id})"><i data-lucide="x" class="w-3 h-3"></i></span>
+                        </div>
+                        <div>
+                            <div class="text-xs font-bold text-slate-200">${t.name}</div>
+                            <div class="text-[10px] mono text-slate-400">$${t.amount}</div>
+                        </div>
+                    </button>
+                `).join('');
+            },
+
+            renderTransactions: () => {
+                const txs = [...window.appState.transactions].reverse();
+                
+                // Render Short Log (Dashboard)
+                const logShort = document.getElementById('tx-log-short');
+                if(txs.length === 0) {
+                    logShort.innerHTML = '<tr><td class="p-4 text-center text-slate-500 text-xs italic">Sin registros.</td></tr>';
+                } else {
+                    logShort.innerHTML = txs.slice(0, 5).map(tx => `
+                        <tr class="hover:bg-white/5 transition-colors">
+                            <td class="py-3 pr-2 w-8 text-center">
+                                ${tx.type === 'income' ? '<i data-lucide="arrow-down-left" class="w-4 h-4 text-emerald-500 inline"></i>' : 
+                                  tx.type === 'loot' ? '<i data-lucide="package" class="w-4 h-4 text-yellow-500 inline"></i>' :
+                                  '<i data-lucide="arrow-up-right" class="w-4 h-4 text-red-500 inline"></i>'}
+                            </td>
+                            <td class="py-3 text-slate-300 truncate max-w-[120px]">${tx.desc}</td>
+                            <td class="py-3 text-right mono font-bold ${tx.type === 'income' ? 'text-emerald-400' : 'text-red-400'}">
+                                ${tx.type === 'income' ? '+' : '-'}$${tx.amount.toLocaleString()}
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+
+                // Render Full Log (Modal)
+                const logFull = document.getElementById('tx-log-full');
+                if(txs.length === 0) {
+                    logFull.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-500 italic">No hay historial de datos.</td></tr>';
+                } else {
+                    logFull.innerHTML = txs.map(tx => {
+                        const date = new Date(tx.date).toLocaleString('es-ES', {day: '2-digit', month: 'short', hour:'2-digit', minute:'2-digit'});
+                        return `
+                        <tr class="hover:bg-white/5 transition-colors group">
+                            <td class="p-4 text-center">
+                                <span class="px-2 py-1 rounded text-[10px] font-bold tracking-widest uppercase border ${tx.type === 'income' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800' : tx.type === 'loot' ? 'bg-yellow-900/30 text-yellow-400 border-yellow-800' : 'bg-red-900/30 text-red-400 border-red-800'}">
+                                    ${tx.type}
+                                </span>
+                            </td>
+                            <td class="p-4 text-slate-400 mono text-xs">${date}</td>
+                            <td class="p-4 text-slate-200">${tx.desc}</td>
+                            <td class="p-4 text-right mono font-bold ${tx.type === 'income' ? 'text-emerald-400' : 'text-red-400'}">
+                                ${tx.type === 'income' ? '+' : '-'}$${tx.amount.toLocaleString()}
+                            </td>
+                            <td class="p-4 text-center">
+                                <button onclick="logic.deleteTransaction(${tx.id})" class="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-all p-1 bg-slate-800 rounded">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `}).join('');
+                }
+            },
+
+            renderShop: () => {
+                const grid = document.getElementById('shop-grid');
+                grid.innerHTML = window.appState.wishlist.map(w => {
+                    const canAfford = window.appState.balance >= w.price;
+                    const isInv = w.type === 'investment';
+                    return `
+                    <div class="glass p-4 rounded-xl relative overflow-hidden transition-all duration-300 ${canAfford ? (isInv ? 'border-blue-500/40' : 'border-yellow-500/40') : 'opacity-60 border-slate-800'}">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="text-[9px] font-bold tracking-widest px-2 py-1 rounded bg-slate-900 uppercase ${isInv ? 'text-blue-400' : 'text-yellow-400'}">
+                                ${isInv ? 'Activo Financiero' : 'Lujo'}
+                            </div>
+                            <button onclick="logic.deleteWishlist(${w.id})" class="text-slate-600 hover:text-red-400"><i data-lucide="trash" class="w-3 h-3"></i></button>
+                        </div>
+                        <div class="font-bold text-base mb-1 text-slate-200">${w.name}</div>
+                        <div class="text-slate-400 mono text-xs mb-4">Costo: $${w.price.toLocaleString()}</div>
+                        <button onclick="logic.buyItem(${w.id})" class="w-full py-2 rounded-lg text-xs font-bold tracking-widest uppercase transition-all ${canAfford ? (isInv ? 'bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white' : 'bg-yellow-600/20 text-yellow-400 hover:bg-yellow-600 hover:text-black') : 'bg-slate-800 text-slate-500 cursor-not-allowed'}" ${!canAfford ? 'disabled' : ''}>
+                            ${canAfford ? 'ADQUIRIR' : 'FONDOS INSUFICIENTES'}
+                        </button>
+                    </div>
+                `}).join('');
+            },
+
+            renderInventory: () => {
+                const grid = document.getElementById('inventory-grid');
+                const totalValue = window.appState.inventory.reduce((sum, item) => sum + item.price, 0);
+                document.getElementById('inventory-value').innerText = `Valor Total: $${totalValue.toLocaleString()}`;
+
+                if(window.appState.inventory.length === 0) {
+                    grid.innerHTML = '<div class="col-span-2 text-center p-8 border border-dashed border-slate-700 rounded-xl text-slate-500 text-sm">Portafolio vacío.</div>';
+                    return;
+                }
+
+                grid.innerHTML = window.appState.inventory.map(item => `
+                    <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700/50 flex items-center justify-between group">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2 rounded-lg ${item.type === 'investment' ? 'bg-blue-900/30 text-blue-400' : 'bg-yellow-900/30 text-yellow-400'}">
+                                <i data-lucide="${item.type === 'investment' ? 'trending-up' : 'package-check'}" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <div class="text-sm font-bold text-slate-300">${item.name}</div>
+                                <div class="text-[10px] text-slate-500 mono">Valor: $${item.price.toLocaleString()}</div>
+                            </div>
+                        </div>
+                        <button onclick="logic.sellItem(${item.id})" class="opacity-0 group-hover:opacity-100 text-[10px] bg-slate-800 text-slate-400 px-2 py-1 rounded hover:bg-slate-700 transition">Vender</button>
+                    </div>
+                `).join('');
+            },
+
+            renderChart: () => {
+                const ctx = document.getElementById('balanceChart').getContext('2d');
+                let runningBalance = 0;
+                let labels = [];
+                let data = [];
+                
+                window.appState.transactions.forEach(tx => {
+                    runningBalance += (tx.type === 'income') ? tx.amount : -tx.amount;
+                    labels.push(tx.date.split('T')[0]);
+                    data.push(runningBalance);
+                });
+
+                if(data.length === 0) { labels = ['Hoy']; data = [0]; }
+
+                if(ui.chartInstance) ui.chartInstance.destroy();
+                const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+                gradient.addColorStop(0, 'rgba(16, 185, 129, 0.4)');
+                gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+
+                ui.chartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            borderColor: '#10b981',
+                            borderWidth: 2,
+                            pointRadius: 0, pointHitRadius: 10, tension: 0.3, fill: true, backgroundColor: gradient
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 10 } } }, x: { display: false } } }
+                });
+            }
+        };
+
+        // BUSINESS LOGIC
+        window.logic = {
+            addTransaction: (type, desc, amount) => {
+                const tx = { id: Date.now(), date: new Date().toISOString(), type, desc, amount };
+                window.appState.transactions.push(tx);
+                if(type === 'income') {
+                    window.appState.balance += amount;
+                    window.appState.totalIncome += amount;
+                } else {
+                    window.appState.balance -= amount;
+                    window.appState.totalExpense += amount;
+                }
+                saveToLocal();
+            },
+
+            deleteTransaction: (id) => {
+                if(!confirm("¿Borrar esta transacción? Afectará tu balance.")) return;
+                const txIndex = window.appState.transactions.findIndex(t => t.id === id);
+                if(txIndex > -1) {
+                    const tx = window.appState.transactions[txIndex];
+                    // Reverse the effect
+                    if(tx.type === 'income') {
+                        window.appState.balance -= tx.amount;
+                        window.appState.totalIncome -= tx.amount;
+                    } else {
+                        window.appState.balance += tx.amount;
+                        window.appState.totalExpense -= tx.amount;
+                    }
+                    window.appState.transactions.splice(txIndex, 1);
+                    saveToLocal();
+                    ui.showToast('Registro eliminado', 'success');
+                }
+            },
+
+            logIncome: () => {
+                const desc = document.getElementById('income-desc').value || 'Ingreso manual';
+                const amt = parseFloat(document.getElementById('income-amt').value);
+                if(!amt || amt <= 0) return ui.showToast('Cantidad inválida', 'error');
+                logic.addTransaction('income', desc, amt);
+                ui.closeModals();
+                document.getElementById('income-desc').value = ''; document.getElementById('income-amt').value = '';
+                ui.showToast(`+$${amt} Transferidos`);
+            },
+
+            logExpense: () => {
+                const desc = document.getElementById('manual-desc').value;
+                const amt = parseFloat(document.getElementById('manual-amt').value);
+                if(!desc || !amt || amt <= 0) return ui.showToast('Datos inválidos', 'error');
+                if(amt > window.appState.balance) return ui.showToast('Fondos insuficientes', 'error');
+                logic.addTransaction('expense', desc, amt);
+                document.getElementById('manual-desc').value = ''; document.getElementById('manual-amt').value = '';
+                ui.showToast('Gasto Registrado');
+            },
+
+            addTemplate: () => {
+                const name = document.getElementById('tpl-name').value;
+                const amt = parseFloat(document.getElementById('tpl-amt').value);
+                const icon = document.getElementById('tpl-icon').value;
+                if(!name || !amt) return ui.showToast('Datos inválidos', 'error');
+                window.appState.templates.push({ id: Date.now(), name, amount: amt, icon });
+                saveToLocal(); ui.closeModals(); ui.showToast('Asset creado');
+            },
+
+            deleteTemplate: (id) => {
+                window.appState.templates = window.appState.templates.filter(t => t.id !== id);
+                saveToLocal(); ui.showToast('Asset eliminado');
+            },
+
+            useTemplate: (id) => {
+                const tpl = window.appState.templates.find(t => t.id === id);
+                if(tpl) {
+                    document.getElementById('manual-desc').value = tpl.name;
+                    document.getElementById('manual-amt').value = tpl.amount;
+                    ui.showToast('Asset preparado. Confirma gasto.', 'success');
+                }
+            },
+
+            addWishlistItem: () => {
+                const name = document.getElementById('wish-name').value;
+                const price = parseFloat(document.getElementById('wish-amt').value);
+                const type = document.getElementById('wish-type').value;
+                if(!name || !price) return ui.showToast('Datos inválidos', 'error');
+                window.appState.wishlist.push({ id: Date.now(), name, price, type });
+                saveToLocal(); ui.closeModals(); ui.showToast('Meta añadida');
+            },
+
+            deleteWishlist: (id) => {
+                window.appState.wishlist = window.appState.wishlist.filter(w => w.id !== id);
+                saveToLocal(); ui.showToast('Meta eliminada');
+            },
+
+            buyItem: (id) => {
+                const idx = window.appState.wishlist.findIndex(w => w.id === id);
+                if(idx > -1) {
+                    const item = window.appState.wishlist[idx];
+                    if(window.appState.balance >= item.price) {
+                        logic.addTransaction('loot', `Adquisición: ${item.name}`, item.price);
+                        item.id = Date.now(); // new id for inventory
+                        window.appState.inventory.push(item);
+                        window.appState.wishlist.splice(idx, 1);
+                        saveToLocal();
+                        ui.showToast(`¡Asset Adquirido!`, 'buy');
+                    }
+                }
+            },
+
+            sellItem: (id) => {
+                const idx = window.appState.inventory.findIndex(i => i.id === id);
+                if(idx > -1) {
+                    const item = window.appState.inventory[idx];
+                    if(confirm(`¿Liquidar ${item.name} por $${item.price}? Los fondos regresarán a tu balance.`)) {
+                        logic.addTransaction('income', `Liquidación: ${item.name}`, item.price);
+                        window.appState.inventory.splice(idx, 1);
+                        saveToLocal();
+                        ui.showToast('Asset Liquidado');
+                    }
+                }
+            },
+
+            // --- SYNC & DATA MANAGEMENT ---
+            exportSave: () => {
+                const dataString = btoa(encodeURIComponent(JSON.stringify(window.appState)));
+                navigator.clipboard.writeText(dataString).then(() => {
+                    ui.showToast('¡Código copiado! Pégalo en otro dispositivo.', 'success');
+                }).catch(err => {
+                    // Fallback for older browsers
+                    prompt("Copia este código de guardado:", dataString);
+                });
+            },
+
+            importSave: () => {
+                const code = document.getElementById('import-code').value;
+                if(!code) return ui.showToast('Ingresa un código válido', 'error');
+                try {
+                    const decoded = JSON.parse(decodeURIComponent(atob(code)));
+                    if(decoded && typeof decoded.balance !== 'undefined') {
+                        if(confirm("ATENCIÓN: Esto sobrescribirá todos los datos actuales de este dispositivo. ¿Continuar?")) {
+                            window.appState = decoded;
+                            saveToLocal();
+                            ui.closeModals();
+                            document.getElementById('import-code').value = '';
+                            ui.showToast('¡Sistema sincronizado con éxito!', 'success');
+                        }
+                    } else throw new Error();
+                } catch(e) {
+                    ui.showToast('Código de partida inválido o corrupto', 'error');
+                }
+            },
+
+            hardReset: () => {
+                if(confirm("PELIGRO: Esto borrará todos los datos de forma permanente. Escribe 'BORRAR' para confirmar.")) {
+                    const input = prompt("Escribe BORRAR para confirmar:");
+                    if(input === "BORRAR") {
+                        window.appState = JSON.parse(JSON.stringify(defaultState));
+                        saveToLocal();
+                        ui.closeModals();
+                        ui.showToast('SISTEMA FORMATEADO', 'error');
+                    }
+                }
+            }
+        };
+
+        window.onload = () => { ui.renderAll(); };
+    </script>
+</body>
+</html>
