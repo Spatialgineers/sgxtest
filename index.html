@@ -6,14 +6,16 @@
     <title>SGX Hand Motion Capture -> Unreal</title>
     <style>
         body { margin: 0; background: #1a1a1a; color: #FDCC0D; font-family: monospace; display: flex; flex-direction: column; align-items: center; }
-        .container { position: relative; width: 640px; height: 480px; margin-top: 20px; border: 2px solid #32527B; }
-        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); display: none; }
+        .container { position: relative; width: 640px; height: 480px; margin-top: 20px; border: 2px solid #32527B; background: #000; }
+        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; }
+        /* El canvas hace un mirror para que se sienta natural como un espejo */
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); }
         .controls { margin-top: 20px; display: flex; gap: 15px; }
-        button { background: #32527B; color: white; border: none; padding: 10px 20px; font-family: monospace; font-size: 16px; cursor: pointer; text-transform: uppercase; }
+        button { background: #32527B; color: white; border: none; padding: 10px 20px; font-family: monospace; font-size: 16px; cursor: pointer; text-transform: uppercase; font-weight: bold; }
         button:hover { background: #B87333; }
         button:disabled { background: #555; cursor: not-allowed; }
-        #status { margin-top: 10px; color: #888888; }
+        #status { margin-top: 10px; color: #888888; font-size: 14px; }
+        #frameCount { font-size: 18px; color: #00FF00; margin-top: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -21,15 +23,16 @@
     <h2>SGX Hand Mocap Logger</h2>
     
     <div class="container">
-        <video id="webcam" autoplay playsinline></video>
+        <video id="webcam" autoplay playsinline muted></video>
         <canvas id="output_canvas" width="640" height="480"></canvas>
     </div>
 
     <div class="controls">
         <button id="recordBtn" disabled>Start Recording</button>
-        <button id="stopBtn" disabled>Stop & Download JSON</button>
+        <button id="stopBtn" disabled>Stop & Download</button>
     </div>
-    <div id="status">Loading MediaPipe...</div>
+    <div id="status">Cargando MediaPipe Tasks Vision...</div>
+    <div id="frameCount">Frames grabados: 0</div>
 
     <script type="module">
         import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
@@ -40,6 +43,7 @@
         const recordBtn = document.getElementById('recordBtn');
         const stopBtn = document.getElementById('stopBtn');
         const statusText = document.getElementById('status');
+        const frameCountText = document.getElementById('frameCount');
 
         let handLandmarker = null;
         let isRecording = false;
@@ -47,55 +51,67 @@
         let startTime = 0;
         let lastVideoTime = -1;
 
-        // Initialize MediaPipe
         async function initMediaPipe() {
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
-            handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-                    delegate: "GPU"
-                },
-                runningMode: "VIDEO",
-                numHands: 2
-            });
-            statusText.innerText = "Model loaded. Starting camera...";
-            startCamera();
+            try {
+                const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+                handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                        delegate: "GPU"
+                    },
+                    runningMode: "VIDEO",
+                    numHands: 2,
+                    minHandDetectionConfidence: 0.5,
+                    minHandPresenceConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+                statusText.innerText = "Motor IA cargado. Pidiendo permiso de cámara...";
+                startCamera();
+            } catch (error) {
+                statusText.innerText = "Error cargando MediaPipe: " + error;
+            }
         }
 
-        // Start Webcam
         function startCamera() {
-            navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } }).then((stream) => {
+            navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+            .then((stream) => {
                 video.srcObject = stream;
+                // Forzamos el play para evitar bloqueos del navegador
+                video.play(); 
                 video.addEventListener("loadeddata", predictWebcam);
                 recordBtn.disabled = false;
-                statusText.innerText = "Ready to record.";
+                statusText.innerText = "Cámara activa. Listo para grabar.";
+            })
+            .catch((err) => {
+                statusText.innerText = "Error de cámara: Asegúrate de dar permisos. " + err;
             });
         }
 
-        // Main Loop
         async function predictWebcam() {
+            // Dibujar el video crudo en el canvas
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
             
             if (video.currentTime !== lastVideoTime) {
                 lastVideoTime = video.currentTime;
+                
                 const results = handLandmarker.detectForVideo(video, performance.now());
                 
-                // Draw and Log
-                if (results.landmarks) {
-                    let frameData = {
-                        timestamp: isRecording ? performance.now() - startTime : 0,
-                        hands: []
-                    };
+                let frameData = {
+                    timestamp: isRecording ? performance.now() - startTime : 0,
+                    hands: []
+                };
 
+                if (results.landmarks && results.landmarks.length > 0) {
                     for (let i = 0; i < results.landmarks.length; i++) {
                         const landmarks = results.landmarks[i];
-                        const handedness = results.handednesses[i][0].category; // Left or Right
+                        const handedness = results.handednesses[i][0].category;
 
-                        // Draw joints for feedback
+                        // Dibujar los nodos en pantalla (Amarillo para izquierda, Cobre para derecha)
                         canvasCtx.fillStyle = handedness === "Left" ? "#FDCC0D" : "#B87333";
                         for (const landmark of landmarks) {
                             canvasCtx.beginPath();
-                            canvasCtx.arc(landmark.x * canvasElement.width, landmark.y * canvasElement.height, 4, 0, 2 * Math.PI);
+                            canvasCtx.arc(landmark.x * canvasElement.width, landmark.y * canvasElement.height, 5, 0, 2 * Math.PI);
                             canvasCtx.fill();
                         }
 
@@ -106,36 +122,40 @@
                             });
                         }
                     }
+                }
 
-                    if (isRecording && frameData.hands.length > 0) {
-                        recordedData.push(frameData);
-                    }
+                // Si estamos grabando, empujamos el frame, aunque no haya manos (para mantener la línea de tiempo intacta en Unreal)
+                if (isRecording) {
+                    recordedData.push(frameData);
+                    frameCountText.innerText = `Frames grabados: ${recordedData.length}`;
                 }
             }
+            // Loop ininterrumpido
             requestAnimationFrame(predictWebcam);
         }
 
-        // Recording Controls
         recordBtn.addEventListener('click', () => {
             isRecording = true;
             recordedData = [];
             startTime = performance.now();
             recordBtn.disabled = true;
             stopBtn.disabled = false;
-            statusText.innerText = "Recording... Act out the scene.";
+            statusText.innerText = "🔴 GRABANDO... Ejecuta la actuación.";
+            statusText.style.color = "#FF0000";
         });
 
         stopBtn.addEventListener('click', () => {
             isRecording = false;
             recordBtn.disabled = false;
             stopBtn.disabled = true;
-            statusText.innerText = `Recorded ${recordedData.length} frames. Downloading...`;
+            statusText.innerText = "Procesando JSON...";
+            statusText.style.color = "#888888";
             downloadJSON();
         });
 
         function downloadJSON() {
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
-                fps_target: 30, // Estimate, Unreal will interpolate based on timestamps
+                fps_target: 30,
                 frames: recordedData
             }));
             const downloadAnchorNode = document.createElement('a');
@@ -144,6 +164,8 @@
             document.body.appendChild(downloadAnchorNode);
             downloadAnchorNode.click();
             downloadAnchorNode.remove();
+            
+            statusText.innerText = `Descarga completada. Total: ${recordedData.length} frames.`;
         }
 
         initMediaPipe();
