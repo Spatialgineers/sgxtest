@@ -1,289 +1,244 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SGX Photobooth Sandbox - Level 1</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <title>SGX 3D Mask VisGen (Absolute Control)</title>
     <style>
-        body { margin: 0; background: #0a0a0a; color: #fff; font-family: monospace; display: flex; height: 100vh; overflow: hidden; }
-        #canvas-container { flex: 1; position: relative; background: #000; display: flex; justify-content: center; align-items: center; }
+        body { margin: 0; overflow: hidden; background-color: #111; font-family: monospace; }
+        video, canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); }
+        video { z-index: 1; opacity: 0.8; }
+        canvas { z-index: 2; pointer-events: none; }
         
-        /* Camera Fix: Invisible pero activo en el DOM para que WebKit no apague el render loop */
-        #input_video { position: absolute; opacity: 0; pointer-events: none; z-index: -10; }
+        #ui-panel {
+            position: absolute; top: 20px; right: 20px; z-index: 10;
+            background: rgba(0, 0, 0, 0.9); padding: 15px; border-radius: 8px;
+            color: #00ff00; border: 1px solid #00ff00; width: 320px;
+            box-shadow: 0 0 15px rgba(0,255,0,0.2); transition: all 0.3s;
+        }
+        #ui-header { cursor: pointer; font-weight: bold; display: flex; justify-content: space-between; font-size: 16px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        #ui-content { display: block; margin-top: 15px; }
         
-        /* Interacción táctil y de mouse directa */
-        canvas { max-width: 100%; max-height: 100%; object-fit: contain; touch-action: none; cursor: grab; }
-        canvas:active { cursor: grabbing; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 12px; }
+        input[type="text"] { width: 100%; background: #222; border: 1px solid #555; color: #00ff00; padding: 5px; box-sizing: border-box; }
+        input[type="range"] { width: 100%; margin-top: 5px; }
         
-        /* SGX UI Panel */
-        #ui-panel { width: 400px; background: #111; border-left: 2px solid #FDCC0D; display: flex; flex-direction: column; z-index: 10; }
-        .panel-header { padding: 20px; background: #1a1a1a; border-bottom: 1px solid #333; }
-        .panel-content { padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 15px; }
+        .toggles { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; font-size: 12px; background: #222; padding: 10px; border-radius: 5px;}
+        .toggles label { cursor: pointer; display: flex; align-items: center; gap: 5px; }
         
-        .sgx-btn { background: #FDCC0D; color: #000; border: none; padding: 10px; font-weight: bold; cursor: pointer; text-transform: uppercase; width: 100%; margin-bottom: 5px; }
-        .sgx-btn:hover { background: #fff; }
-        .sgx-btn.danger { background: #ff3333; color: white; }
-        input[type="text"] { background: #222; border: 1px solid #444; color: #FDCC0D; padding: 10px; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
-        
-        /* Layer Styles */
-        .layer-card { background: #222; border: 1px solid #333; padding: 10px; border-left: 4px solid #FDCC0D; margin-bottom: 10px; }
-        .layer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: bold; }
-        .layer-controls { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; font-size: 12px; }
-        input[type="range"] { width: 100%; cursor: pointer; accent-color: #FDCC0D; }
-        .order-btns button { background: #444; color: white; border: none; padding: 4px 8px; cursor: pointer; }
-        .order-btns button:hover { background: #FDCC0D; color: black; }
-        .del-btn { background: #ff3333; color: white; border: none; padding: 4px 8px; cursor: pointer; }
+        #export-btn {
+            width: 100%; padding: 10px; background: #00ff00; color: #000;
+            border: none; font-weight: bold; cursor: pointer; text-transform: uppercase;
+            font-family: monospace; font-size: 14px;
+        }
+        #export-btn:hover { background: #00cc00; }
+        #log { position: absolute; top: 10px; left: 10px; z-index: 10; color: #00ff00; background: rgba(0,0,0,0.5); padding: 5px; font-size: 12px; }
     </style>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    </script>
 </head>
 <body>
-
-    <div id="canvas-container">
-        <video id="input_video" autoplay playsinline></video>
-        <canvas id="output_canvas"></canvas>
-    </div>
-
+    <div id="log">Iniciando SGX VisGen...</div>
+    
     <div id="ui-panel">
-        <div class="panel-header">
-            <h2 style="margin:0; color:#FDCC0D;">SGX.FrameBuilder</h2>
+        <div id="ui-header">
+            <span>⚙️ SGX Controles</span>
+            <span id="ui-toggle">▼</span>
         </div>
-        <div class="panel-content">
-            <div>
-                <input type="text" id="imgUrl" placeholder="URL de la imagen (Wix, Drive...)">
-                <button class="sgx-btn" onclick="addLayer()">+ Inyectar Asset</button>
+        <div id="ui-content">
+            <div class="input-group">
+                <label>GLB Asset URL:</label>
+                <input type="text" id="asset-url" value="https://static.wixstatic.com/3d/fe81a7_cf1ed4e58d0048efa955f39d347a9466.glb">
+                <button id="load-btn" style="width:100%; margin-top:5px; padding:5px; cursor:pointer; background:#444; color:#fff; border:none;">Cargar Modelo</button>
             </div>
-
-            <div style="display: flex; gap: 10px;">
-                <button class="sgx-btn" onclick="takePhoto()" style="flex:1;">📸 Capturar</button>
-                <button class="sgx-btn danger" id="recordBtn" onclick="toggleRecording()" style="flex:1;">🔴 Grabar</button>
-            </div>
-
-            <hr style="border-color: #333; width: 100%;">
             
-            <div id="layers-container">
-                </div>
+            <div class="toggles">
+                <label><input type="checkbox" id="mirror-pos" checked> 🪞 Mirror Posición (Izq/Der)</label>
+                <label><input type="checkbox" id="flip-x"> 🔄 Invertir Rot X (Arriba/Abajo)</label>
+                <label><input type="checkbox" id="flip-y" checked> 🔄 Invertir Rot Y (Giro Izq/Der)</label>
+                <label><input type="checkbox" id="flip-z" checked> 🔄 Invertir Rot Z (Inclinación)</label>
+            </div>
+
+            <div class="input-group">
+                <label>Scale: <span id="val-scale">10.0</span></label>
+                <input type="range" id="slide-scale" min="0.1" max="20" step="0.1" value="10">
+            </div>
+            <div class="input-group">
+                <label>Offset Y (Alto): <span id="val-y">1.4</span></label>
+                <input type="range" id="slide-y" min="-10" max="10" step="0.1" value="1.4">
+            </div>
+            <div class="input-group">
+                <label>Offset Z (Profundidad): <span id="val-z">0.4</span></label>
+                <input type="range" id="slide-z" min="-10" max="10" step="0.1" value="0.4">
+            </div>
+            <button id="export-btn">⬇ Exportar WebAR</button>
         </div>
     </div>
 
-    <script>
-        // --- 1. SETUP THREE.JS (CÁMARA ORTOGRÁFICA) ---
-        const canvas = document.getElementById('output_canvas');
-        const renderer = new THREE.WebGLRenderer({ canvas: canvas, preserveDrawingBuffer: true, alpha: true });
-        renderer.setSize(450, 800); // Proporción de móvil / Photobooth
-        
-        const scene = new THREE.Scene();
-        
-        // El espacio ortográfico anula la perspectiva 3D, dándote control 2D perfecto.
-        const viewSize = 100;
-        const aspect = 450 / 800;
-        const camera = new THREE.OrthographicCamera(-viewSize*aspect, viewSize*aspect, viewSize, -viewSize, 0.1, 1000);
-        camera.position.z = 10;
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="output_canvas"></canvas>
 
-        // --- 2. INYECCIÓN DE CÁMARA (BACKGROUND) ---
-        const videoElement = document.getElementById('input_video');
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-            .then(stream => { 
-                videoElement.srcObject = stream; 
-                videoElement.play(); // Dispara el render engine
-            })
-            .catch(err => console.error("Error de cámara:", err));
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { FilesetResolver, FaceLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs';
 
-        const videoTexture = new THREE.VideoTexture(videoElement);
-        videoTexture.center.set(0.5, 0.5);
-        videoTexture.repeat.set(-1, 1); // Espejo de la cámara
-        scene.background = videoTexture;
-
-        // --- 3. SISTEMA DE CAPAS (LAYERS) ---
-        let layers = []; 
-        let meshGroup = new THREE.Group();
-        scene.add(meshGroup);
-
-        function addLayer() {
-            const url = document.getElementById('imgUrl').value;
-            if (!url) return;
-
-            const loader = new THREE.TextureLoader();
-            loader.setCrossOrigin('anonymous'); // BYPASS CORS
-            
-            loader.load(url, (texture) => {
-                const imgAspect = texture.image.width / texture.image.height;
-                const baseWidth = viewSize * aspect * 1.5; 
-                
-                const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthTest: false });
-                const geometry = new THREE.PlaneGeometry(baseWidth, baseWidth / imgAspect);
-                const mesh = new THREE.Mesh(geometry, material);
-                
-                meshGroup.add(mesh);
-
-                const layerData = {
-                    id: Date.now(),
-                    mesh: mesh,
-                    scale: 1
-                };
-                
-                layers.push(layerData);
-                updateRenderOrder();
-                renderUI();
-                document.getElementById('imgUrl').value = '';
-            });
-        }
-
-        // Manejo de profundidad (Z-Index sin distorsionar tamaño)
-        function updateRenderOrder() {
-            layers.forEach((layer, index) => {
-                layer.mesh.renderOrder = index; 
-                layer.mesh.position.z = index * 0.1; // Anti Z-fighting
-            });
-        }
-
-        function removeLayer(index) {
-            meshGroup.remove(layers[index].mesh);
-            layers[index].mesh.geometry.dispose();
-            layers[index].mesh.material.dispose();
-            layers.splice(index, 1);
-            updateRenderOrder();
-            renderUI();
-        }
-
-        function moveLayer(index, direction) {
-            if (direction === -1 && index > 0) {
-                // Atrás
-                [layers[index], layers[index - 1]] = [layers[index - 1], layers[index]];
-            } else if (direction === 1 && index < layers.length - 1) {
-                // Frente
-                [layers[index], layers[index + 1]] = [layers[index + 1], layers[index]];
-            }
-            updateRenderOrder();
-            renderUI();
-        }
-
-        window.updateLayerScale = function(index) {
-            const l = layers[index];
-            l.scale = parseFloat(document.getElementById(`s-${l.id}`).value);
-            l.mesh.scale.set(l.scale, l.scale, 1);
-        }
-
-        // --- 4. INTERACCIÓN ESPACIAL (RAYCASTER DRAG & DROP) ---
-        const raycaster = new THREE.Raycaster();
-        const pointer = new THREE.Vector2();
-        let selectedMesh = null;
-        let dragOffset = new THREE.Vector3();
-        const dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // Plano invisible de arrastre
-
-        canvas.addEventListener('pointerdown', (event) => {
-            const rect = canvas.getBoundingClientRect();
-            pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-            raycaster.setFromCamera(pointer, camera);
-            
-            const intersects = raycaster.intersectObjects(meshGroup.children);
-
-            if (intersects.length > 0) {
-                // Forzar agarre del asset que está visualmente al frente
-                intersects.sort((a, b) => b.object.renderOrder - a.object.renderOrder);
-                selectedMesh = intersects[0].object;
-                
-                // Calcular diferencia entre centro geométrico y click
-                dragOffset.copy(selectedMesh.position).sub(intersects[0].point);
-            }
-        });
-
-        canvas.addEventListener('pointermove', (event) => {
-            if (!selectedMesh) return;
-            
-            const rect = canvas.getBoundingClientRect();
-            pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-            raycaster.setFromCamera(pointer, camera);
-            
-            const target = new THREE.Vector3();
-            dragPlane.constant = -selectedMesh.position.z; 
-            raycaster.ray.intersectPlane(dragPlane, target);
-            
-            // Asignar nueva coordenada + offset inicial
-            selectedMesh.position.x = target.x + dragOffset.x;
-            selectedMesh.position.y = target.y + dragOffset.y;
-        });
-
-        window.addEventListener('pointerup', () => { 
-            selectedMesh = null; 
-        });
-
-        // --- 5. RENDER UI DINÁMICO ---
-        function renderUI() {
-            const container = document.getElementById('layers-container');
-            container.innerHTML = '';
-
-            layers.forEach((layer, index) => {
-                const card = document.createElement('div');
-                card.className = 'layer-card';
-                card.innerHTML = `
-                    <div class="layer-header">
-                        <span>Layer ${index + 1}</span>
-                        <div class="order-btns">
-                            <button onclick="moveLayer(${index}, -1)" title="Mover Atrás">▼</button>
-                            <button onclick="moveLayer(${index}, 1)" title="Mover al Frente">▲</button>
-                            <button class="del-btn" onclick="removeLayer(${index})">X</button>
-                        </div>
-                    </div>
-                    <div class="layer-controls">
-                        <label>Escala</label>
-                        <input type="range" id="s-${layer.id}" min="0.1" max="4" step="0.05" value="${layer.scale}" oninput="updateLayerScale(${index})">
-                    </div>
-                    <div style="font-size:10px; color:#888; margin-top:10px;">Arrastra la imagen directamente en el canvas para posicionarla.</div>
-                `;
-                container.prepend(card); 
-            });
-        }
-
-        // --- 6. RENDER LOOP ---
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-        }
-        animate();
-
-        // --- 7. EXPORTACIÓN DE MEDIA ---
-        let isRecording = false;
-        let mediaRecorder;
-        let recordedChunks = [];
-
-        function takePhoto() {
-            const a = document.createElement('a');
-            a.href = canvas.toDataURL('image/png');
-            a.download = `SGX_Frame_${Date.now()}.png`;
-            a.click();
-        }
-
-        function toggleRecording() {
-            const btn = document.getElementById('recordBtn');
-            if (!isRecording) {
-                const stream = canvas.captureStream(30);
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-                mediaRecorder.onstop = () => {
-                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `SGX_Video_${Date.now()}.webm`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    recordedChunks = [];
-                };
-                mediaRecorder.start();
-                isRecording = true;
-                btn.innerText = '⬛ STOP REC';
-                btn.style.background = 'white'; btn.style.color = 'black';
+        // Lógica Colapsable
+        document.getElementById('ui-header').addEventListener('click', () => {
+            const content = document.getElementById('ui-content');
+            const toggle = document.getElementById('ui-toggle');
+            if (content.style.display === 'none') {
+                content.style.display = 'block'; toggle.innerText = '▼';
             } else {
-                mediaRecorder.stop();
-                isRecording = false;
-                btn.innerText = '🔴 Grabar';
-                btn.style.background = '#ff3333'; btn.style.color = 'white';
+                content.style.display = 'none'; toggle.innerText = '▲';
             }
+        });
+
+        // Estado Global
+        let config = { 
+            url: document.getElementById('asset-url').value, 
+            scale: 10.0, y: 1.4, z: 0.4, 
+            mirrorPos: true, flipX: false, flipY: true, flipZ: true 
+        };
+
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('output_canvas');
+        const log = document.getElementById('log');
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 10;
+        
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 2.0));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2.5);
+        dirLight.position.set(0, 5, 5);
+        scene.add(dirLight);
+
+        const faceGroup = new THREE.Group(); 
+        scene.add(faceGroup);
+        faceGroup.visible = false;
+
+        let maskMesh;
+        const loader = new GLTFLoader();
+
+        function loadModel() {
+            if(maskMesh) faceGroup.remove(maskMesh);
+            log.innerText = "Cargando modelo...";
+            loader.load(config.url, (gltf) => {
+                maskMesh = gltf.scene;
+                updateMeshTransforms();
+                faceGroup.add(maskMesh);
+                log.innerText = "Tracking Absoluto Activo.";
+            });
         }
+
+        function updateMeshTransforms() {
+            if(!maskMesh) return;
+            maskMesh.scale.setScalar(config.scale);
+            maskMesh.position.set(0, config.y, config.z);
+        }
+
+        loadModel();
+
+        // UI Listeners (Toggles)
+        document.getElementById('load-btn').addEventListener('click', () => { config.url = document.getElementById('asset-url').value; loadModel(); });
+        document.getElementById('mirror-pos').addEventListener('change', (e) => { config.mirrorPos = e.target.checked; });
+        document.getElementById('flip-x').addEventListener('change', (e) => { config.flipX = e.target.checked; });
+        document.getElementById('flip-y').addEventListener('change', (e) => { config.flipY = e.target.checked; });
+        document.getElementById('flip-z').addEventListener('change', (e) => { config.flipZ = e.target.checked; });
+        
+        // UI Listeners (Sliders)
+        ['scale', 'y', 'z'].forEach(id => {
+            document.getElementById(`slide-${id}`).addEventListener('input', (e) => {
+                config[id] = parseFloat(e.target.value);
+                document.getElementById(`val-${id}`).innerText = config[id].toFixed(1);
+                updateMeshTransforms();
+            });
+        });
+
+        // MediaPipe
+        let faceLandmarker, lastVideoTime = -1;
+        async function initMediaPipe() {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+            faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" },
+                outputFaceBlendshapes: false,
+                outputFacialTransformationMatrixes: true,
+                runningMode: "VIDEO",
+                numFaces: 1
+            });
+            startCamera();
+        }
+
+        function startCamera() {
+            navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } }).then((stream) => {
+                video.srcObject = stream;
+                video.addEventListener("loadeddata", predictWebcam);
+            });
+        }
+
+        function predictWebcam() {
+            if (lastVideoTime !== video.currentTime && faceLandmarker) {
+                lastVideoTime = video.currentTime;
+                const results = faceLandmarker.detectForVideo(video, performance.now());
+                
+                if (results.facialTransformationMatrixes && results.faceLandmarks.length > 0) {
+                    faceGroup.visible = true;
+                    
+                    // 1. POSICIÓN ABSOLUTA (Con Toggle de Espejo)
+                    const nose = results.faceLandmarks[0][1];
+                    
+                    // Si mirrorPos es true, invertimos la X para que coincida con el CSS mirror
+                    const multiplierX = config.mirrorPos ? -1 : 1;
+                    const ndcX = multiplierX * ((nose.x * 2) - 1); 
+                    const ndcY = -((nose.y * 2) - 1); // Y siempre se invierte por diferencias de sistema
+                    
+                    const vector = new THREE.Vector3(ndcX, ndcY, 0.5);
+                    vector.unproject(camera);
+                    const dir = vector.sub(camera.position).normalize();
+                    const distance = -camera.position.z / dir.z; 
+                    const pos = camera.position.clone().add(dir.multiplyScalar(distance));
+                    
+                    faceGroup.position.copy(pos);
+
+                    // 2. ROTACIÓN MATRICIAL (Con Toggles Independientes)
+                    const mpMatrix = new THREE.Matrix4().fromArray(results.facialTransformationMatrixes[0].data).transpose();
+                    const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+                    mpMatrix.decompose(p, q, s);
+                    
+                    const euler = new THREE.Euler().setFromQuaternion(q);
+                    
+                    // Aplicar inversiones basadas en la UI
+                    if(config.flipX) euler.x = -euler.x; // Arriba/Abajo
+                    if(config.flipY) euler.y = -euler.y; // Izquierda/Derecha
+                    if(config.flipZ) euler.z = -euler.z; // Inclinación
+                    
+                    faceGroup.quaternion.setFromEuler(euler);
+
+                } else {
+                    faceGroup.visible = false;
+                }
+            }
+            renderer.render(scene, camera);
+            window.requestAnimationFrame(predictWebcam);
+        }
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        initMediaPipe();
+
+        // Placeholder para Exportar
+        document.getElementById('export-btn').addEventListener('click', () => {
+            log.innerText = "Exportador pendiente. Valida la calibración de ejes.";
+        });
     </script>
 </body>
 </html>
