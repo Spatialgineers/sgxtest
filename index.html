@@ -2,243 +2,238 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>SGX 3D Mask VisGen (Absolute Control)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Spatialgram - Production Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #111; font-family: monospace; }
-        video, canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); }
-        video { z-index: 1; opacity: 0.8; }
-        canvas { z-index: 2; pointer-events: none; }
-        
-        #ui-panel {
-            position: absolute; top: 20px; right: 20px; z-index: 10;
-            background: rgba(0, 0, 0, 0.9); padding: 15px; border-radius: 8px;
-            color: #00ff00; border: 1px solid #00ff00; width: 320px;
-            box-shadow: 0 0 15px rgba(0,255,0,0.2); transition: all 0.3s;
+        body { 
+            background-color: #000; /* Fondo negro para que en set se pierda el borde de la pantalla */
+            color: #fff; 
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
+            margin: 0;
+            display: flex;
+            justify-content: center;
         }
-        #ui-header { cursor: pointer; font-weight: bold; display: flex; justify-content: space-between; font-size: 16px; border-bottom: 1px solid #333; padding-bottom: 10px; }
-        #ui-content { display: block; margin-top: 15px; }
         
-        .input-group { margin-bottom: 15px; }
-        .input-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 12px; }
-        input[type="text"] { width: 100%; background: #222; border: 1px solid #555; color: #00ff00; padding: 5px; box-sizing: border-box; }
-        input[type="range"] { width: 100%; margin-top: 5px; }
-        
-        .toggles { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; font-size: 12px; background: #222; padding: 10px; border-radius: 5px;}
-        .toggles label { cursor: pointer; display: flex; align-items: center; gap: 5px; }
-        
-        #export-btn {
-            width: 100%; padding: 10px; background: #00ff00; color: #000;
-            border: none; font-weight: bold; cursor: pointer; text-transform: uppercase;
-            font-family: monospace; font-size: 14px;
+        /* Mobile Container Restricto */
+        #mobile-viewport {
+            width: 100%;
+            max-width: 400px; /* Ancho estándar de móvil */
+            height: 100dvh;
+            background-color: #000;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #262626;
+            border-right: 1px solid #262626;
         }
-        #export-btn:hover { background: #00cc00; }
-        #log { position: absolute; top: 10px; left: 10px; z-index: 10; color: #00ff00; background: rgba(0,0,0,0.5); padding: 5px; font-size: 12px; }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .post-media { aspect-ratio: 4 / 5; object-fit: cover; width: 100%; background-color: #1a1a1a; }
+        
+        .icon-btn { 
+            width: 24px; 
+            height: 24px; 
+            cursor: pointer; 
+            background: none; 
+            border: none; 
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .icon-btn svg { width: 100%; height: 100%; transition: transform 0.1s; }
+        .icon-btn:active svg { transform: scale(0.9); }
+
+        /* Lógica Visual del Like Animado */
+        .like-btn.liked svg {
+            fill: #ff3040;
+            stroke: #ff3040;
+            animation: heartPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes heartPop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.25); }
+            100% { transform: scale(1); }
+        }
     </style>
-    <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
-    </script>
 </head>
 <body>
-    <div id="log">Iniciando SGX VisGen...</div>
-    
-    <div id="ui-panel">
-        <div id="ui-header">
-            <span>⚙️ SGX Controles</span>
-            <span id="ui-toggle">▼</span>
-        </div>
-        <div id="ui-content">
-            <div class="input-group">
-                <label>GLB Asset URL:</label>
-                <input type="text" id="asset-url" value="https://static.wixstatic.com/3d/fe81a7_cf1ed4e58d0048efa955f39d347a9466.glb">
-                <button id="load-btn" style="width:100%; margin-top:5px; padding:5px; cursor:pointer; background:#444; color:#fff; border:none;">Cargar Modelo</button>
-            </div>
-            
-            <div class="toggles">
-                <label><input type="checkbox" id="mirror-pos" checked> 🪞 Mirror Posición (Izq/Der)</label>
-                <label><input type="checkbox" id="flip-x"> 🔄 Invertir Rot X (Arriba/Abajo)</label>
-                <label><input type="checkbox" id="flip-y" checked> 🔄 Invertir Rot Y (Giro Izq/Der)</label>
-                <label><input type="checkbox" id="flip-z" checked> 🔄 Invertir Rot Z (Inclinación)</label>
-            </div>
 
-            <div class="input-group">
-                <label>Scale: <span id="val-scale">10.0</span></label>
-                <input type="range" id="slide-scale" min="0.1" max="20" step="0.1" value="10">
+    <div id="mobile-viewport">
+        <header class="p-4 flex justify-between items-center bg-black sticky top-0 z-50 border-b border-[#262626]">
+            <h1 class="text-xl font-bold tracking-tight">Spatialgram</h1>
+            <div class="flex gap-4">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-10.6 8.38 8.38 0 0 1 3.9.9L23 3l-1.5 6.5z"></path></svg>
             </div>
-            <div class="input-group">
-                <label>Offset Y (Alto): <span id="val-y">1.4</span></label>
-                <input type="range" id="slide-y" min="-10" max="10" step="0.1" value="1.4">
-            </div>
-            <div class="input-group">
-                <label>Offset Z (Profundidad): <span id="val-z">0.4</span></label>
-                <input type="range" id="slide-z" min="-10" max="10" step="0.1" value="0.4">
-            </div>
-            <button id="export-btn">⬇ Exportar WebAR</button>
-        </div>
+        </header>
+
+        <main id="feed" class="no-scrollbar overflow-y-auto flex-1 pb-10"></main>
     </div>
 
-    <video id="webcam" autoplay playsinline></video>
-    <canvas id="output_canvas"></canvas>
-
-    <script type="module">
-        import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { FilesetResolver, FaceLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs';
-
-        // Lógica Colapsable
-        document.getElementById('ui-header').addEventListener('click', () => {
-            const content = document.getElementById('ui-content');
-            const toggle = document.getElementById('ui-toggle');
-            if (content.style.display === 'none') {
-                content.style.display = 'block'; toggle.innerText = '▼';
-            } else {
-                content.style.display = 'none'; toggle.innerText = '▲';
+    <script>
+        // DATASET: 20 posts inyectados en la línea de tiempo 2022-2023
+        const postData = [
+            {
+                username: "spatial_architect",
+                imageUrl: "https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=1000",
+                caption: "Initial render of the 2022 spatial engine core. Stability at 98%. ⚡",
+                date: "OCTOBER 24, 2022"
+            },
+            {
+                username: "lightning_fingers",
+                imageUrl: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?q=80&w=1000",
+                caption: "Optimizing the mesh for real-time interaction. Poly count under 50k. 🛠️",
+                date: "NOVEMBER 02, 2022"
+            },
+            {
+                username: "lider_ent",
+                imageUrl: "https://images.unsplash.com/photo-1542204165-65bf26472b9b?q=80&w=1000",
+                caption: "LIDER Tower is live. First virtual space deployment completed.",
+                date: "NOVEMBER 19, 2022"
+            },
+            {
+                username: "high_creator",
+                imageUrl: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=1000",
+                caption: "Hardware tests on the new VR rigs. Latency is non-existent.",
+                date: "DECEMBER 05, 2022"
+            },
+            {
+                username: "cara_b_city",
+                imageUrl: "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?q=80&w=1000",
+                caption: "Desert landscapes rendering in real time for the upcoming show.",
+                date: "JANUARY 12, 2023"
+            },
+            {
+                username: "spatial_architect",
+                imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000",
+                caption: "Project Alpha: Phase 2 documentation. Scaling the architecture.",
+                date: "FEBRUARY 08, 2023"
+            },
+            {
+                username: "lightning_fingers",
+                imageUrl: "https://images.unsplash.com/photo-1555680202-c86f0e12f086?q=80&w=1000",
+                caption: "C# backend logic integrated. The multiplayer servers are breathing.",
+                date: "FEBRUARY 22, 2023"
+            },
+            {
+                username: "raw_majik",
+                imageUrl: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1000",
+                caption: "Palo Xanto live in the virtual desert. Immersive audio setup.",
+                date: "APRIL 17, 2023"
+            },
+            {
+                username: "mighty_maze",
+                imageUrl: "https://images.unsplash.com/photo-1511512578047-dfb367046420?q=80&w=1000",
+                caption: "Game mechanics locked. The mice are running the maze. 🧀",
+                date: "JUNE 29, 2023"
+            },
+            {
+                username: "spatial_architect",
+                imageUrl: "https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?q=80&w=1000",
+                caption: "Blueprints for the next big XR deployment. Scaling up.",
+                date: "JULY 14, 2023"
+            },
+            {
+                username: "high_creator",
+                imageUrl: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=1000",
+                caption: "Server stress test successful. 100 concurrent users without lag.",
+                date: "AUGUST 03, 2023"
+            },
+            {
+                username: "lightning_fingers",
+                imageUrl: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1000",
+                caption: "Data streams look beautiful tonight. Compiling version 1.4.",
+                date: "AUGUST 21, 2023"
+            },
+            {
+                username: "decentrico_mall",
+                imageUrl: "https://images.unsplash.com/photo-1558655146-d09347e92766?q=80&w=1000",
+                caption: "Welcome to the dreamscape. Guayama Mall enters the spatial web.",
+                date: "OCTOBER 29, 2023"
+            },
+            {
+                username: "spatial_architect",
+                imageUrl: "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?q=80&w=1000",
+                caption: "Abstracting the UI to make it invisible. Less is more in XR.",
+                date: "NOVEMBER 11, 2023"
+            },
+            {
+                username: "high_creator",
+                imageUrl: "https://images.unsplash.com/photo-1535223289827-42f1e9919769?q=80&w=1000",
+                caption: "Final pipeline review before the end of the year.",
+                date: "DECEMBER 15, 2023"
+            },
+            {
+                username: "carcajadaland",
+                imageUrl: "https://images.unsplash.com/photo-1516110833967-0b5716ca1387?q=80&w=1000",
+                caption: "Beta testing the laughter therapy module. Neural response is positive.",
+                date: "JANUARY 21, 2024"
+            },
+            {
+                username: "lightning_fingers",
+                imageUrl: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=1000",
+                caption: "New lighting engine makes the 3D assets pop instantly. 🔥",
+                date: "FEBRUARY 10, 2024"
+            },
+            {
+                username: "spatial_architect",
+                imageUrl: "https://images.unsplash.com/photo-1605810230434-7631ac76ec81?q=80&w=1000",
+                caption: "Client handoff completed. The system is autonomous now.",
+                date: "MARCH 05, 2024"
+            },
+            {
+                username: "high_creator",
+                imageUrl: "https://images.unsplash.com/photo-1614729939124-032f0b56c9ce?q=80&w=1000",
+                caption: "Exploring new horizons in spatial audio placement.",
+                date: "MARCH 22, 2024"
+            },
+            {
+                username: "spatial_architect",
+                imageUrl: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=1000",
+                caption: "Engineering imagination. Building reality. 🌍",
+                date: "APRIL 01, 2024"
             }
-        });
+        ];
 
-        // Estado Global
-        let config = { 
-            url: document.getElementById('asset-url').value, 
-            scale: 10.0, y: 1.4, z: 0.4, 
-            mirrorPos: true, flipX: false, flipY: true, flipZ: true 
-        };
+        const feedContainer = document.getElementById('feed');
 
-        const video = document.getElementById('webcam');
-        const canvas = document.getElementById('output_canvas');
-        const log = document.getElementById('log');
-
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 10;
-        
-        const renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-
-        scene.add(new THREE.AmbientLight(0xffffff, 2.0));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 2.5);
-        dirLight.position.set(0, 5, 5);
-        scene.add(dirLight);
-
-        const faceGroup = new THREE.Group(); 
-        scene.add(faceGroup);
-        faceGroup.visible = false;
-
-        let maskMesh;
-        const loader = new GLTFLoader();
-
-        function loadModel() {
-            if(maskMesh) faceGroup.remove(maskMesh);
-            log.innerText = "Cargando modelo...";
-            loader.load(config.url, (gltf) => {
-                maskMesh = gltf.scene;
-                updateMeshTransforms();
-                faceGroup.add(maskMesh);
-                log.innerText = "Tracking Absoluto Activo.";
-            });
+        function createPost(data) {
+            return `
+                <article class="py-4 border-b border-[#262626]">
+                    <div class="flex items-center justify-between px-4 mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-700 to-gray-400"></div>
+                            <span class="text-sm font-semibold">${data.username}</span>
+                        </div>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
+                    </div>
+                    
+                    <img src="${data.imageUrl}" class="post-media" loading="lazy">
+                    
+                    <div class="px-4 py-3">
+                        <div class="flex gap-4 mb-3">
+                            <button onclick="this.classList.toggle('liked')" class="like-btn icon-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+                            </button>
+                            <button class="icon-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-10.6 8.38 8.38 0 0 1 3.9.9L23 3l-1.5 6.5z"></path></svg>
+                            </button>
+                            <button class="icon-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                            </button>
+                        </div>
+                        <p class="text-sm mb-1"><span class="font-semibold mr-2">${data.username}</span>${data.caption}</p>
+                        <p class="text-[10px] text-gray-500 uppercase mt-2 font-medium">${data.date}</p>
+                    </div>
+                </article>
+            `;
         }
 
-        function updateMeshTransforms() {
-            if(!maskMesh) return;
-            maskMesh.scale.setScalar(config.scale);
-            maskMesh.position.set(0, config.y, config.z);
-        }
-
-        loadModel();
-
-        // UI Listeners (Toggles)
-        document.getElementById('load-btn').addEventListener('click', () => { config.url = document.getElementById('asset-url').value; loadModel(); });
-        document.getElementById('mirror-pos').addEventListener('change', (e) => { config.mirrorPos = e.target.checked; });
-        document.getElementById('flip-x').addEventListener('change', (e) => { config.flipX = e.target.checked; });
-        document.getElementById('flip-y').addEventListener('change', (e) => { config.flipY = e.target.checked; });
-        document.getElementById('flip-z').addEventListener('change', (e) => { config.flipZ = e.target.checked; });
-        
-        // UI Listeners (Sliders)
-        ['scale', 'y', 'z'].forEach(id => {
-            document.getElementById(`slide-${id}`).addEventListener('input', (e) => {
-                config[id] = parseFloat(e.target.value);
-                document.getElementById(`val-${id}`).innerText = config[id].toFixed(1);
-                updateMeshTransforms();
-            });
-        });
-
-        // MediaPipe
-        let faceLandmarker, lastVideoTime = -1;
-        async function initMediaPipe() {
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
-            faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" },
-                outputFaceBlendshapes: false,
-                outputFacialTransformationMatrixes: true,
-                runningMode: "VIDEO",
-                numFaces: 1
-            });
-            startCamera();
-        }
-
-        function startCamera() {
-            navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } }).then((stream) => {
-                video.srcObject = stream;
-                video.addEventListener("loadeddata", predictWebcam);
-            });
-        }
-
-        function predictWebcam() {
-            if (lastVideoTime !== video.currentTime && faceLandmarker) {
-                lastVideoTime = video.currentTime;
-                const results = faceLandmarker.detectForVideo(video, performance.now());
-                
-                if (results.facialTransformationMatrixes && results.faceLandmarks.length > 0) {
-                    faceGroup.visible = true;
-                    
-                    // 1. POSICIÓN ABSOLUTA (Con Toggle de Espejo)
-                    const nose = results.faceLandmarks[0][1];
-                    
-                    // Si mirrorPos es true, invertimos la X para que coincida con el CSS mirror
-                    const multiplierX = config.mirrorPos ? -1 : 1;
-                    const ndcX = multiplierX * ((nose.x * 2) - 1); 
-                    const ndcY = -((nose.y * 2) - 1); // Y siempre se invierte por diferencias de sistema
-                    
-                    const vector = new THREE.Vector3(ndcX, ndcY, 0.5);
-                    vector.unproject(camera);
-                    const dir = vector.sub(camera.position).normalize();
-                    const distance = -camera.position.z / dir.z; 
-                    const pos = camera.position.clone().add(dir.multiplyScalar(distance));
-                    
-                    faceGroup.position.copy(pos);
-
-                    // 2. ROTACIÓN MATRICIAL (Con Toggles Independientes)
-                    const mpMatrix = new THREE.Matrix4().fromArray(results.facialTransformationMatrixes[0].data).transpose();
-                    const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
-                    mpMatrix.decompose(p, q, s);
-                    
-                    const euler = new THREE.Euler().setFromQuaternion(q);
-                    
-                    // Aplicar inversiones basadas en la UI
-                    if(config.flipX) euler.x = -euler.x; // Arriba/Abajo
-                    if(config.flipY) euler.y = -euler.y; // Izquierda/Derecha
-                    if(config.flipZ) euler.z = -euler.z; // Inclinación
-                    
-                    faceGroup.quaternion.setFromEuler(euler);
-
-                } else {
-                    faceGroup.visible = false;
-                }
-            }
-            renderer.render(scene, camera);
-            window.requestAnimationFrame(predictWebcam);
-        }
-        
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        initMediaPipe();
-
-        // Placeholder para Exportar
-        document.getElementById('export-btn').addEventListener('click', () => {
-            log.innerText = "Exportador pendiente. Valida la calibración de ejes.";
-        });
+        // Renderizado automático de los 20 posts
+        feedContainer.innerHTML = postData.map(post => createPost(post)).join('');
     </script>
 </body>
 </html>
